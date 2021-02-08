@@ -4,6 +4,7 @@
 #@File:     TDX2SQLite1.0.py
 #@Software: PyCharm
 from __future__ import unicode_literals, division
+from database import SQLite3_read
 import pandas as pd
 import os
 import struct
@@ -133,27 +134,52 @@ def tdxfloder2sqlite(j_add=None, exchange=None, DB_Name=None, table_name=None, c
     os.chdir(addr)
     fname_list = glob.glob('*.day')
 
+
     for fname in fname_list:
         try:
-            print(fname)
-            df = tdx_read.get_df_by_file(fname)
-            # df = df.sort_index(ascending=False)
-            refresh_date = datetime.date.today()  # 今天日期
-            print(refresh_date)
-            df['re_date'] = refresh_date
 
-            df.insert(0, 'Name', codename[fname])
+
             conn = sqlite3.connect(DB_Name)
             cursor = conn.cursor()
             print('连接数据库%s成功' % (DB_Name))
+            sql = "SELECT MAX(date) FROM %s WHERE Name = '%s'" % (table_name,codename[fname])
+            cursor.execute(sql)
+            date_in_sqlite = cursor.fetchone()
+            refresh_date = datetime.date.today()  # 今天日期
+            if date_in_sqlite[0]== None:
+                #如果数据库中没有该股票名字，则直接存入
+                df = tdx_read.get_df_by_file(fname)  # 读取通达信vipdoc下面的文件,并解析成pandas Dataframe格式
+                # df = df.sort_index(ascending=False)
 
-            try:
-                df.to_sql(table_name, con=conn, if_exists='append', index='False')
-            except Exception as e:
-                print(e)
-                conn.rollback()  # 回滚
-                print('插入数据到表失败')
+                df['re_date'] = refresh_date
+                df.insert(0, 'Name', codename[fname])
 
+                try:
+
+                    df.to_sql(table_name, con=conn, if_exists='append', index='False')
+                    print('数据库中插入新股%s'%(codename[fname]))
+                except Exception as e:
+                    print(e)
+                    conn.rollback()  # 回滚
+                    print('插入数据到表失败')
+            elif date_in_sqlite<refresh_date: # 今天日期:
+                #判断数据库中最新的日期，截取该日期之后的数据存入数据库
+                df = tdx_read.get_df_by_file(fname)  # 读取通达信vipdoc下面的文件,并解析成pandas Dataframe格式
+                df = df[df['date']>date_in_sqlite]
+
+                df['re_date'] = refresh_date
+                df.insert(0, 'Name', codename[fname])
+
+                try:
+
+                    df.to_sql(table_name, con=conn, if_exists='append', index='False')
+                    print('数据库中插入股票%s从%s之后的新数据' % (codename[fname],date_in_sqlite))
+                except Exception as e:
+                    print(e)
+                    conn.rollback()  # 回滚
+                    print('插入数据到表失败')
+            else:
+                print("无需更新数据库，请先更新通达信软件的交易数据缓存信息")
             # 批量插入之后再执行事务提交
             conn.commit()
             # 关闭游标
@@ -171,11 +197,11 @@ if __name__ == '__main__':
     exchanges = ['ds','sh','sz']
 
     DB_Name = 'E:\\sqlite3\\TDX.db'
-    table_name='index'
+    table_name='index_D'
 
 
     codename = pd.read_csv('E:\\sqlite3\\code.csv')
     codename = dict(zip(codename['代码'],codename['名字']))
     for exchange in exchanges:
         tdxfloder2sqlite(j_add,exchange,DB_Name,table_name,codename)
-    print(str(datetime.date.today()) +'数据保存完毕！')
+    print(str(datetime.date.today()) +'今天的通达信在数据库中保存完毕！')
