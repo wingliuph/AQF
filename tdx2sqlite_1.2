@@ -1,10 +1,4 @@
-#-*- codeing = utf-8 -*-
-#@TIME:     2021/2/4 14:17 
-#@Author:   刘澎浩
-#@File:     TDX2SQLite1.0.py
-#@Software: PyCharm
 from __future__ import unicode_literals, division
-from database import SQLite3_read
 import pandas as pd
 import os
 import struct
@@ -13,25 +7,22 @@ import datetime
 import sqlite3
 import talib as ta
 
-
 class TdxReader(object):
     def unpack_records(self, format, data):
         record_struct = struct.Struct(format)
         return (record_struct.unpack_from(data, offset)
                 for offset in range(0, len(data), record_struct.size))
 
-
 class TdxBatReader(TdxReader):
     """
             读取tdx日线数据
     """
-
     def __init__(self, vipdoc_path=None, exchange=None):
         self.vipdoc_path = vipdoc_path
-        self.exchange = exchange
+        self.exchange    = exchange
 
     def generate_filename(self, codeaddr):
-        # exchange是交易所，有SZ和SH
+        #exchange是交易所，有SZ和SH
         fname = codeaddr
 
         return fname
@@ -40,7 +31,7 @@ class TdxBatReader(TdxReader):
         if not os.path.isfile(fname):
             print('no data, pleaes check path %s', fname)
 
-        if exchange == 'ds':
+        if exchange =='ds':
             with open(fname, 'rb') as f:
                 content = f.read()
                 return self.unpack_records('<IffffIII', content)
@@ -50,11 +41,12 @@ class TdxBatReader(TdxReader):
                 content = f.read()
                 return self.unpack_records('<IIIIIfII', content)
             return []
+    
 
     def get_df_by_file(self, fname):
         if not os.path.isfile(fname):
             print('no tdx kline data, pleaes check path %s', fname)
-
+            
         security_type = self.get_security_type(fname)
         if security_type not in self.SECURITY_TYPE:
             print("Unknown security type\n")
@@ -65,12 +57,12 @@ class TdxBatReader(TdxReader):
 
         df = pd.DataFrame(data=data, columns=('date', 'open', 'high', 'low', 'close', 'amount', 'volume'))
         # df.index = pd.to_datetime(df.日期)
-
-        df['change'] = round(df['close'].diff() / df['close'] * 100, 3)  # 涨跌娶4位有效数字
+        df['change'] = round(df['close'].diff() / df['close'] * 100, 3)  # 涨跌幅取3位有效数字
         df = df.sort_values(by='date', ascending=False)#计算涨跌幅之后，再按日期降序排列
-        df.drop(0, inplace=True)#删除第一行的NaN，change没有数据
+        df.drop(0,inplace=True)#删除第一行的NaN，change没有数据
 
         return df[['date', 'open', 'high', 'low', 'close','change', 'amount', 'volume']]
+
 
     def _df_convert(self, row, coefficient):
         t_date = str(row[0])
@@ -78,7 +70,7 @@ class TdxBatReader(TdxReader):
 
         new_row = (
             datestr,
-            row[1] * coefficient[0],
+            row[1] * coefficient[0], 
             row[2] * coefficient[0],
             row[3] * coefficient[0],
             row[4] * coefficient[0],
@@ -119,66 +111,58 @@ class TdxBatReader(TdxReader):
             print("Unknown security exchange !\n")
 
     SECURITY_EXCHANGE = ["sz", "sh"]
-    SECURITY_TYPE = ["SH_A_STOCK", "SH_B_STOCK", "SH_INDEX", "SH_FUND", "SH_BOND", "SZ_A_STOCK", "SZ_B_STOCK",
-                     "SZ_INDEX", "SZ_FUND", "SZ_BOND", "DS_BOND"]
-    SECURITY_COEFFICIENT = {"SH_A_STOCK": [0.01, 0.01], "SH_B_STOCK": [0.001, 0.01], "SH_INDEX": [0.01, 1.0],
-                            "SH_FUND": [0.001, 1.0], "SH_BOND": [0.001, 1.0], "SZ_A_STOCK": [0.01, 0.01],
-                            "SZ_B_STOCK": [0.01, 0.01], "SZ_INDEX": [0.01, 1.0], "SZ_FUND": [0.001, 0.01],
-                            "SZ_BOND": [0.001, 0.01], "DS_BOND": [1, 10]}
+    SECURITY_TYPE = ["SH_A_STOCK", "SH_B_STOCK", "SH_INDEX", "SH_FUND", "SH_BOND", "SZ_A_STOCK", "SZ_B_STOCK", "SZ_INDEX", "SZ_FUND", "SZ_BOND", "DS_BOND"]
+    SECURITY_COEFFICIENT = {"SH_A_STOCK": [0.01, 0.01], "SH_B_STOCK": [0.001, 0.01], "SH_INDEX": [0.01, 1.0], "SH_FUND": [0.001, 1.0], "SH_BOND": [0.001, 1.0], "SZ_A_STOCK": [0.01, 0.01], "SZ_B_STOCK": [0.01, 0.01], "SZ_INDEX": [0.01, 1.0], "SZ_FUND": [0.001, 0.01], "SZ_BOND": [0.001, 0.01],"DS_BOND":[1,10]}
 
-def tdxfloder2sqlite(j_add=None, exchange=None, DB_Name=None, table_name=None, codename=None):
+def tdxfloder2sqlite(j_add=None,exchange=None,DB_Name = None,table_name = None,codename=None):
     '''
     通达信vipdoc地址j_add=None,交易所exchange=None,数据库地址和名字DB_Name = None,数据表名字table_name = None,股票字典codename=None
     '''
     addr = os.path.join(j_add, '%s' % (exchange), 'lday')
     os.chdir(addr)
     fname_list = glob.glob('*.day')
-
-
+    
     for fname in fname_list:
         try:
-
-
             conn = sqlite3.connect(DB_Name)
             cursor = conn.cursor()
-            print('连接数据库%s成功' % (DB_Name))
             sql = "SELECT MAX(date) FROM %s WHERE Name = '%s'" % (table_name,codename[fname])
             cursor.execute(sql)
-            date_in_sqlite = cursor.fetchone()
+            date_in_sqlite = cursor.fetchone()            
             refresh_date = datetime.date.today()  # 今天日期
-            if date_in_sqlite[0]== None:
+            print('数据库%s中%s的最新日期是%s' % (DB_Name,codename[fname],date_in_sqlite[0]))            
+            date_in_sqlite = datetime.datetime.strptime(str(date_in_sqlite[0]),'%Y-%m-%d').date()                   
+            
+            if date_in_sqlite== None:
                 #如果数据库中没有该股票名字，则直接存入
+                print('date_in_sqlite[0]== None')
                 df = tdx_read.get_df_by_file(fname)  # 读取通达信vipdoc下面的文件,并解析成pandas Dataframe格式
-                # df = df.sort_index(ascending=False)
-
+                # df = df.sort_index(ascending=False)                
                 df['re_date'] = refresh_date
                 df.insert(0, 'Name', codename[fname])
-
                 try:
-
                     df.to_sql(table_name, con=conn, if_exists='append', index='False')
                     print('数据库中插入新股%s'%(codename[fname]))
                 except Exception as e:
                     print(e)
                     conn.rollback()  # 回滚
                     print('插入数据到表失败')
-            elif date_in_sqlite<refresh_date: # 今天日期:
+            elif date_in_sqlite < refresh_date: # 今天日期:
+                print('date_in_sqlite < refresh_date')
                 #判断数据库中最新的日期，截取该日期之后的数据存入数据库
                 df = tdx_read.get_df_by_file(fname)  # 读取通达信vipdoc下面的文件,并解析成pandas Dataframe格式
-                df = df[df['date']>date_in_sqlite]
 
                 df['re_date'] = refresh_date
                 df.insert(0, 'Name', codename[fname])
-
+                
                 try:
-
-                    df.to_sql(table_name, con=conn, if_exists='append', index='False')
+                    df.to_sql(table_name, con=conn,if_exists='append', index='False')
                     print('数据库中插入股票%s从%s之后的新数据' % (codename[fname],date_in_sqlite))
                 except Exception as e:
                     print(e)
                     conn.rollback()  # 回滚
                     print('插入数据到表失败')
-            else:
+            else:#如果数据库中该股最大日期等于或者大于通达信缓存中的最大日期，则跳出。
                 print("无需更新数据库，请先更新通达信软件的交易数据缓存信息")
             # 批量插入之后再执行事务提交
             conn.commit()
@@ -195,10 +179,9 @@ if __name__ == '__main__':
 
     j_add = 'D:\\Program Files (x86)\\tdx\\vipdoc'
     exchanges = ['ds','sh','sz']
-
+    #exchanges = ['sz']
     DB_Name = 'E:\\sqlite3\\TDX.db'
     table_name='index_D'
-
 
     codename = pd.read_csv('E:\\sqlite3\\code.csv')
     codename = dict(zip(codename['代码'],codename['名字']))
